@@ -11,6 +11,52 @@ LOGINLOG = open("login.log","a")
 SSH_KEY = paramiko.RSAKey(filename='sshkey/honeyta.key')
 PORT = 22
 
+
+def server_command_handle(server_command, ssh_channel):
+    respon = ""
+    if server_command.startswith("whoami"):
+        respon = "root"
+    elif server_command.startswith("pwd"):
+        respon = "/"
+    elif server_command.startswith("ls"):
+        respon = "Home Document Pictures Videos Downloads"
+    elif server_command.startswith("rm"):
+        respon = "you need permission for this action."
+    elif server_command.startswith("uname"):
+        respon = "Linux server 4.13.0-32-generic #35~16.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
+    elif server_command.startswith("id"):
+        respon = "uid=0(root) gid=0(root) groups=0(root)"
+
+    elif server_command.startswith("chmod"):
+        respon = "There was some error in changing access the files..try again later"
+
+    elif server_command.startswith("chown"):
+        respon = "There was some error in changing owner the files..try again later"
+
+    elif server_command.startswith("mv"):
+        respon = "There was some error in moving the files..try again later"
+
+    elif server_command.startswith("cat /proc/cpuinfo"):
+        isi("cpuinfo",ssh_channel)
+        return
+    elif server_command.startswith("cat /etc/passwd"):
+        isi("passwd",ssh_channel)
+        return
+
+    FILELOG.write(respon + "\n")
+    FILELOG.flush()
+    ssh_channel.send(respon + "\r\n")
+
+def isi(nama_file, ssh_channel):
+    with open('fakefiles/{}'.format(nama_file)) as text:
+        ssh_channel.send("\r")
+        for line in enumerate(text):
+            FILELOG.write(line[1])
+            ssh_channel.send(line[1]+ "\r")
+    FILELOG.flush()
+
+
+
 class Honeyta(paramiko.ServerInterface):
     def __init__(self):
         self.te = threading.Event()
@@ -124,49 +170,6 @@ def ssh_server():
                 tp.close()
             except Exception:
                 pass
-
-def server_command_handle(server_command, ssh_channel):
-    respon = ""
-    if server_command.startswith("whoami"):
-        respon = "root"
-    elif server_command.startswith("pwd"):
-        respon = "/"
-    elif server_command.startswith("ls"):
-        respon = "Home Document Pictures Videos Downloads"
-    elif server_command.startswith("rm"):
-        respon = "you need permission for this action."
-    elif server_command.startswith("uname"):
-        respon = "Linux server 4.13.0-32-generic #35~16.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
-    elif server_command.startswith("id"):
-        respon = "uid=0(root) gid=0(root) groups=0(root)"
-
-    elif server_command.startswith("chmod"):
-        respon = "There was some error in changing access the files..try again later"
-
-    elif server_command.startswith("chown"):
-        respon = "There was some error in changing owner the files..try again later"
-
-    elif server_command.startswith("mv"):
-        respon = "There was some error in moving the files..try again later"
-
-    elif server_command.startswith("cat /proc/cpuinfo"):
-        isi("cpuinfo",ssh_channel)
-        return
-    elif server_command.startswith("cat /etc/passwd"):
-        isi("passwd",ssh_channel)
-        return
-
-    FILELOG.write(respon + "\n")
-    FILELOG.flush()
-    ssh_channel.send(respon + "\r\n")
-
-def isi(nama_file, ssh_channel):
-    with open('fakefiles/{}'.format(nama_file)) as text:
-        ssh_channel.send("\r")
-        for line in enumerate(text):
-            FILELOG.write(line[1])
-            ssh_channel.send(line[1]+ "\r")
-    FILELOG.flush()
 
 
 
