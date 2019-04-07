@@ -1,15 +1,31 @@
-import  threading
+import threading
 import socket
 import sys
 import time
 import traceback
-import  paramiko
+import paramiko
+import os
+import configmail
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
 FILELOG = open("log/honeyta.log","a")
 LOGINLOG = open("login.log","a")
 SSH_KEY = paramiko.RSAKey(filename='sshkey/honeyta.key')
-PORT = 22
+PORT = 2222
+THREADLOGLOCK = threading.Lock()
+bodymail = "Honeypot mendeteksi ada serangan pada server anda"
+subjectmail = "Pemberitahuan Honeypot!"
+msg = MIMEMultipart()
+msg['From'] = configmail.mailFromAdress
+msg['To'] = configmail.mailToAdress
+msg['Subject'] = subjectmail
+msg.attach(MIMEText(bodymail,'plain'))
+message = msg.as_string()
+
+
 
 
 def server_command_handle(server_command, ssh_channel):
@@ -18,23 +34,21 @@ def server_command_handle(server_command, ssh_channel):
         respon = "root"
     elif server_command.startswith("pwd"):
         respon = "/"
-    elif server_command.startswith("ls"):
-        respon = "Home Document Pictures Videos Downloads"
     elif server_command.startswith("rm"):
         respon = "you need permission for this action."
     elif server_command.startswith("uname"):
-        respon = "Linux server 4.13.0-32-generic #35~16.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
+        respon = "Linux server 5.15.0-32-generic #35~20.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
     elif server_command.startswith("id"):
         respon = "uid=0(root) gid=0(root) groups=0(root)"
 
     elif server_command.startswith("chmod"):
-        respon = "There was some error in changing access the files..try again later"
+        respon = server_command + ": There was some error in changing access the files..try again later"
 
     elif server_command.startswith("chown"):
-        respon = "There was some error in changing owner the files..try again later"
+        respon = server_command + ": There was some error in changing owner the files..try again later"
 
     elif server_command.startswith("mv"):
-        respon = "There was some error in moving the files..try again later"
+        respon = server_command + ": There was some error in moving the files..try again later"
 
     elif server_command.startswith("cat /proc/cpuinfo"):
         isi("cpuinfo",ssh_channel)
@@ -42,6 +56,17 @@ def server_command_handle(server_command, ssh_channel):
     elif server_command.startswith("cat /etc/passwd"):
         isi("passwd",ssh_channel)
         return
+    elif server_command.startswith("cat /etc/shadow"):
+        isi("shadow",ssh_channel)
+    elif server_command.startswith("cat /proc/mounts"):
+        isi("mounts",ssh_channel)
+    elif server_command.startswith("ls"):
+        isi("ls",ssh_channel)
+
+    elif server_command.startswith(""):
+        pass
+    else:
+        respon = server_command + ": command not found"
 
     FILELOG.write(respon + "\n")
     FILELOG.flush()
@@ -56,7 +81,6 @@ def isi(nama_file, ssh_channel):
     FILELOG.flush()
 
 
-
 class Honeyta(paramiko.ServerInterface):
     def __init__(self):
         self.te = threading.Event()
@@ -67,20 +91,28 @@ class Honeyta(paramiko.ServerInterface):
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
     def check_auth_password(self, username, password):
+        THREADLOGLOCK.acquire()
         try:
-            LOGINLOG.write(username + ":" + password + "\n")
+            print("[#] Attacker memasukan username & password: " + username + ':' + password + "\n")
+            LOGINLOG.write(username + ':' + password + "\n")
+            if (username == 'root') and (password == 'p4ssword12345'):
+                return paramiko.AUTH_SUCCESSFUL
             LOGINLOG.close()
-            return paramiko.AUTH_SUCCESSFULL
-        except:
-            return paramiko.AUTH_FAILED
+        finally:
+            THREADLOGLOCK.release()
+        return paramiko.AUTH_FAILED
+
+
+    def get_allowed_auths(self, username):
+        if username == 'root':
+            return 'password'
 
     def check_channel_shell_request(self, channel):
         self.te.set()
         return True
 
-
-    def get_allowed_auths(self, username):
-        return 'password'
+    def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
+        return True
 
 
 def ssh_server():
@@ -96,23 +128,32 @@ def ssh_server():
     while True:
         try:
             s.listen(100)
-            print ("	[+] ======================================= [+]")
-            print ("	[!]  Semua aksi attacker terekam di honeta.log [!]")
-            print ("	[+] ======================================= [+]")
+            os.system('iptables -A PREROUTING -t nat -p tcp --dport 22 -j REDIRECT --to-port 2222')
+            print ("[+] ======================================================= [+]")
+            print ("[!] Semua aksi attacker terekam di honeta.log dan login.log [!]")
+            print ("[+] ======================================================= [+]")
             insock, ip_att = s.accept()
         except Exception as e:
             print ('Gagal menunggu Koneksi dari attacker : {}'.format(e))
             traceback.print_exc()
+        except KeyboardInterrupt:
+            sys.exit(0)
+
         FILELOG.write("\n Attacker IP : " + ip_att[0] + "\n" )
         FILELOG.write("Attacker PORT : " + str(ip_att[1]) + "\n")
         FILELOG.write("Waktu Penyerangan : " +str(time.ctime) + "\n")
-        FILELOG.write("======================================")
-        print ("	[-] Attacker IP : " + ip_att[0])
-        print ("	[-] Attacker PORT : " + str(ip_att[1]))
-        print ("	[-] Waktu Penyerangan : " + str(time.ctime()))
-        print ("	[+] ==================================== [+]")
+        FILELOG.write("=============================================")
+        server = smtplib.SMTP(configmail.mailFromServer)
+        server.starttls()
+        server.login(configmail.mailFromAdress, configmail.mailFromPassword)
+        server.sendmail(configmail.mailFromAdress, configmail.mailToAdress, message)
+        server.quit()
+        print("[-] Attacker IP : " + ip_att[0])
+        print("[-] Attacker PORT : " + str(ip_att[1]))
+        print("[-] Waktu Penyerangan : " + str(time.ctime()))
+        print("[+] ========================================== [+]")
         try:
-            tp = paramiko.Transport(ip_att)
+            tp = paramiko.Transport(insock)
             tp.add_server_key(SSH_KEY)
             tp.local_version = "SSH-2.0-OpenSSH_7.9 Ubuntu"
             serverpalsu = Honeyta()
@@ -136,7 +177,7 @@ def ssh_server():
                 ssh_channel.send("Ubuntu 20.04\r\n\r\n")
                 r = True
                 while r:
-                    ssh_channel.send("$ ")
+                    ssh_channel.send("root@server:~")
                     server_command = ""
                     while not server_command.endswith("\r"):
                         tp = ssh_channel.recv(1024)
@@ -148,7 +189,8 @@ def ssh_server():
                     server_command = server_command.rstrip()
                     FILELOG.write('IP : ' + str(ip_att[0]) + "\n")
                     FILELOG.write('Time:' + str(time.ctime()) + "\n")
-                    FILELOG.write("$ "+ server_command + "\n")
+                    FILELOG.write("Inputan :"+ server_command + "\n")
+                    FILELOG.write("=================================\n")
                     print(server_command)
                     if server_command == "exit":
                         r = False
@@ -171,8 +213,5 @@ def ssh_server():
             except Exception:
                 pass
 
-
-
-if __name__ == "__main___":
+if __name__ == "__main__":
     ssh_server()
-
