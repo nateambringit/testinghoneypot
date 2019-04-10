@@ -1,21 +1,26 @@
 import threading
 import socket
 import sys
-import time
 import traceback
 import paramiko
 import os
+import logging
 import configmail
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 
-FILELOG = open("log/honeyta.log","a")
-LOGINLOG = open("login.log","a")
+logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%s',
+                            filename='log/honeyta.log',
+                            filemode='a')
+
+LOGINLOG = open("log/login.log","a")
+
 SSH_KEY = paramiko.RSAKey(filename='sshkey/honeyta.key')
 PORT = 2222
-THREADLOGLOCK = threading.Lock()
 bodymail = "Honeypot mendeteksi ada serangan pada server anda"
 subjectmail = "Pemberitahuan Honeypot!"
 msg = MIMEMultipart()
@@ -37,7 +42,7 @@ def server_command_handle(server_command, ssh_channel):
     elif server_command.startswith("rm"):
         respon = "you need permission for this action."
     elif server_command.startswith("uname"):
-        respon = "Linux server 5.15.0-32-generic #35~20.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
+        respon = "Linux server 4.11.0-32-generic #35~20.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
     elif server_command.startswith("id"):
         respon = "uid=0(root) gid=0(root) groups=0(root)"
 
@@ -68,17 +73,15 @@ def server_command_handle(server_command, ssh_channel):
     else:
         respon = server_command + ": command not found"
 
-    FILELOG.write(respon + "\n")
-    FILELOG.flush()
+    logging.info(respon + "\n")
     ssh_channel.send(respon + "\r\n")
 
 def isi(nama_file, ssh_channel):
     with open('fakefiles/{}'.format(nama_file)) as text:
         ssh_channel.send("\r")
         for line in enumerate(text):
-            FILELOG.write(line[1])
+            logging.info(line[1])
             ssh_channel.send(line[1]+ "\r")
-    FILELOG.flush()
 
 
 class Honeyta(paramiko.ServerInterface):
@@ -91,20 +94,15 @@ class Honeyta(paramiko.ServerInterface):
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
     def check_auth_password(self, username, password):
-        THREADLOGLOCK.acquire()
-        try:
-            print("[#] Attacker memasukan username & password: " + username + ':' + password + "\n")
-            LOGINLOG.write(username + ':' + password + "\n")
-            if (username == 'root') and (password == 'p4ssword12345'):
-                return paramiko.AUTH_SUCCESSFUL
-            LOGINLOG.close()
-        finally:
-            THREADLOGLOCK.release()
+        print("[#] Attacker memasukan username & password: " + username + ':' + password + "\n")
+        logging.warning(username + ':' + password + "\n")
+        LOGINLOG.write(username + ':' + password + "\n")
+        if(username == "root") and (password == "password123"):
+            return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
 
 
     def get_allowed_auths(self, username):
-        if username == 'root':
             return 'password'
 
     def check_channel_shell_request(self, channel):
@@ -121,7 +119,7 @@ def ssh_server():
         s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
         s.bind(('', PORT))
     except Exception as e:
-        print ('Binding port dan address gagal {}'.format(e))
+        print('Binding port dan address gagal {}'.format(e))
         traceback.print_exc()
         sys.exit(1)
 
@@ -129,20 +127,18 @@ def ssh_server():
         try:
             s.listen(100)
             os.system('iptables -A PREROUTING -t nat -p tcp --dport 22 -j REDIRECT --to-port 2222')
-            print ("[+] ======================================================= [+]")
-            print ("[!] Semua aksi attacker terekam di honeta.log dan login.log [!]")
-            print ("[+] ======================================================= [+]")
+            print("[+] ======================================================= [+]")
+            print("[!] Semua aksi attacker terekam di honeta.log dan login.log [!]")
+            print("[+] ======================================================= [+]")
             insock, ip_att = s.accept()
         except Exception as e:
-            print ('Gagal menunggu Koneksi dari attacker : {}'.format(e))
+            print('Gagal menunggu Koneksi dari attacker : {}'.format(e))
             traceback.print_exc()
         except KeyboardInterrupt:
             sys.exit(0)
 
-        FILELOG.write("\n Attacker IP : " + ip_att[0] + "\n" )
-        FILELOG.write("Attacker PORT : " + str(ip_att[1]) + "\n")
-        FILELOG.write("Waktu Penyerangan : " +str(time.ctime) + "\n")
-        FILELOG.write("=============================================")
+        logging.info("\n Attacker IP : " + ip_att[0] + "\n" )
+        logging.info("Attacker PORT : " + str(ip_att[1]) + "\n")
         server = smtplib.SMTP(configmail.mailFromServer)
         server.starttls()
         server.login(configmail.mailFromAdress, configmail.mailFromPassword)
@@ -150,7 +146,6 @@ def ssh_server():
         server.quit()
         print("[-] Attacker IP : " + ip_att[0])
         print("[-] Attacker PORT : " + str(ip_att[1]))
-        print("[-] Waktu Penyerangan : " + str(time.ctime()))
         print("[+] ========================================== [+]")
         try:
             tp = paramiko.Transport(insock)
@@ -160,21 +155,21 @@ def ssh_server():
             try:
                 tp.start_server(server=serverpalsu)
             except paramiko.SSHException:
-                print ("Error menyambung SSH")
-                raise Exception ("Error menyambung SSH")
+                print("Gagal menyambung SSH Server")
+
 
             ssh_channel = tp.accept(20)
             if ssh_channel is None:
-                print("Tidak ada channel SSH")
-                raise Exception ("Tidak ada channel SSH")
+                print("Tidak ada sambungan pada channel SSH")
+
 
             serverpalsu.te.wait(10)
             if not serverpalsu.te.is_set():
                 print("Tidak ada request pada server")
-                raise Exception("Tidak ada request pada shell server")
+
 
             try:
-                ssh_channel.send("Ubuntu 20.04\r\n\r\n")
+                ssh_channel.send("Ubuntu 16.04\r\n\r\n")
                 r = True
                 while r:
                     ssh_channel.send("root@server:~")
@@ -187,10 +182,9 @@ def ssh_server():
 
                     ssh_channel.send("\r\n")
                     server_command = server_command.rstrip()
-                    FILELOG.write('IP : ' + str(ip_att[0]) + "\n")
-                    FILELOG.write('Time:' + str(time.ctime()) + "\n")
-                    FILELOG.write("Inputan :"+ server_command + "\n")
-                    FILELOG.write("=================================\n")
+                    logging.info('IP : ' + str(ip_att[0]) + "\n")
+                    logging.info("Inputan :"+ server_command + "\n")
+
                     print(server_command)
                     if server_command == "exit":
                         r = False
