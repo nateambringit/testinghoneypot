@@ -3,7 +3,6 @@ import socket
 import sys
 import traceback
 import paramiko
-import os
 import logging
 import configmail
 import smtplib
@@ -20,7 +19,8 @@ logging.basicConfig(level=logging.DEBUG,
 LOGINLOG = open("log/login.log","a")
 
 SSH_KEY = paramiko.RSAKey(filename='sshkey/honeyta.key')
-PORT = 2222
+PORT = 22
+loglock_thread = threading.Lock()
 bodymail = "Honeypot mendeteksi ada serangan pada server anda"
 subjectmail = "Pemberitahuan Honeypot!"
 msg = MIMEMultipart()
@@ -29,8 +29,6 @@ msg['To'] = configmail.mailToAdress
 msg['Subject'] = subjectmail
 msg.attach(MIMEText(bodymail,'plain'))
 message = msg.as_string()
-
-
 
 
 def server_command_handle(server_command, ssh_channel):
@@ -63,13 +61,22 @@ def server_command_handle(server_command, ssh_channel):
         return
     elif server_command.startswith("cat /etc/shadow"):
         isi("shadow",ssh_channel)
+        return
     elif server_command.startswith("cat /proc/mounts"):
         isi("mounts",ssh_channel)
+        return
+    elif server_command.startswith("cat /etc/hosts"):
+        isi("etchost",ssh_channel)
+        return
     elif server_command.startswith("ls"):
         isi("ls",ssh_channel)
-
-    elif server_command.startswith(""):
-        pass
+        return
+    elif server_command.startswith("ifconfig"):
+        isi("ifconfig",ssh_channel)
+        return
+    elif server_command.startswith("resolv"):
+        isi("resolv",ssh_channel)
+        return 
     else:
         respon = server_command + ": command not found"
 
@@ -94,11 +101,15 @@ class Honeyta(paramiko.ServerInterface):
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
     def check_auth_password(self, username, password):
-        print("[#] Attacker memasukan username & password: " + username + ':' + password + "\n")
-        logging.warning(username + ':' + password + "\n")
-        LOGINLOG.write(username + ':' + password + "\n")
-        if(username == "root") and (password == "password123"):
-            return paramiko.AUTH_SUCCESSFUL
+        loglock_thread.acquire()
+        try:
+            print("[#] Attacker memasukan username & password: " + username + ':' + password + "\n")
+            logging.warning(username + ':' + password + "\n")
+            LOGINLOG.write(username + ':' + password + "\n")
+            if(username == "root") and (password == "password123"):
+                return paramiko.AUTH_SUCCESSFUL
+        finally:
+            loglock_thread.release()
         return paramiko.AUTH_FAILED
 
 
@@ -126,9 +137,8 @@ def ssh_server():
     while True:
         try:
             s.listen(100)
-            os.system('iptables -A PREROUTING -t nat -p tcp --dport 22 -j REDIRECT --to-port 2222')
             print("[+] ======================================================= [+]")
-            print("[!] Semua aksi attacker terekam di honeta.log dan login.log [!]")
+            print("[!] Semua aksi attacker terekam di honeyta.log dan login.log [!]")
             print("[+] ======================================================= [+]")
             insock, ip_att = s.accept()
         except Exception as e:
@@ -150,7 +160,7 @@ def ssh_server():
         try:
             tp = paramiko.Transport(insock)
             tp.add_server_key(SSH_KEY)
-            tp.local_version = "SSH-2.0-OpenSSH_7.9 Ubuntu"
+            tp.local_version = "SSH-2.0-OpenSSH_7.9 Ubuntu-4ubuntu2.5"
             serverpalsu = Honeyta()
             try:
                 tp.start_server(server=serverpalsu)
@@ -158,7 +168,7 @@ def ssh_server():
                 print("Gagal menyambung SSH Server")
 
 
-            ssh_channel = tp.accept(20)
+            ssh_channel = tp.accept()
             if ssh_channel is None:
                 print("Tidak ada sambungan pada channel SSH")
 
@@ -172,7 +182,7 @@ def ssh_server():
                 ssh_channel.send("Ubuntu 16.04\r\n\r\n")
                 r = True
                 while r:
-                    ssh_channel.send("root@server:~")
+                    ssh_channel.send("root@server:~# ")
                     server_command = ""
                     while not server_command.endswith("\r"):
                         tp = ssh_channel.recv(1024)
