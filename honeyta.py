@@ -68,15 +68,17 @@ def server_command_handle(server_command, ssh_channel):
     elif server_command.startswith("cat /etc/hosts"):
         isi("etchost",ssh_channel)
         return
+    elif server_command.startswith("cat /etc/issue"):
+        isi("etcissue",ssh_channel)
+        return
+    elif server_command.startswith("cat /etc/resolv.conf"):
+        isi("resolv", ssh_channel)
     elif server_command.startswith("ls"):
         isi("ls",ssh_channel)
         return
     elif server_command.startswith("ifconfig"):
         isi("ifconfig",ssh_channel)
         return
-    elif server_command.startswith("resolv"):
-        isi("resolv",ssh_channel)
-        return 
     else:
         respon = server_command + ": command not found"
 
