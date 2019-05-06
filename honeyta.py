@@ -138,7 +138,7 @@ def ssh_server():
 
     while True:
         try:
-            s.listen(100)
+            s.listen(1000)
             print("[+] ======================================================= [+]")
             print("[!] Semua aksi attacker terekam di honeyta.log dan login.log [!]")
             print("[+] ======================================================= [+]")
