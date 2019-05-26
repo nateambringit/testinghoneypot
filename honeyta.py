@@ -6,6 +6,7 @@ import paramiko
 import logging
 import configmail
 import smtplib
+import pymysql
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -21,6 +22,7 @@ LOGINLOG = open("log/login.log","a")
 SSH_KEY = paramiko.RSAKey(filename='sshkey/honeyta.key')
 PORT = 22
 loglock_thread = threading.Lock()
+
 bodymail = "Honeypot mendeteksi ada serangan pada server anda"
 subjectmail = "Pemberitahuan Honeypot!"
 msg = MIMEMultipart()
@@ -32,66 +34,18 @@ message = msg.as_string()
 
 
 def server_command_handle(server_command, ssh_channel):
-    respon = ""
-    if server_command.startswith("whoami"):
-        respon = "root"
-    elif server_command.startswith("pwd"):
-        respon = "/"
-    elif server_command.startswith("rm"):
-        respon = "you need permission for this action."
-    elif server_command.startswith("uname"):
-        respon = "Linux server 4.11.0-32-generic #35~20.04.1-Ubuntu SMP Thu Jan 25 10:13:43 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux"
-    elif server_command.startswith("id"):
-        respon = "uid=0(root) gid=0(root) groups=0(root)"
+    honeydb = pymysql.connect("localhost","skripsi","rahasia","honeydb")
+    cursordb = honeydb.cursor()
 
-    elif server_command.startswith("chmod"):
-        respon = server_command + ": There was some error in changing access the files..try again later"
-
-    elif server_command.startswith("chown"):
-        respon = server_command + ": There was some error in changing owner the files..try again later"
-
-    elif server_command.startswith("mv"):
-        respon = server_command + ": There was some error in moving the files..try again later"
-
-    elif server_command.startswith("cat /proc/cpuinfo"):
-        isi("cpuinfo",ssh_channel)
-        return
-    elif server_command.startswith("cat /etc/passwd"):
-        isi("passwd",ssh_channel)
-        return
-    elif server_command.startswith("cat /etc/shadow"):
-        isi("shadow",ssh_channel)
-        return
-    elif server_command.startswith("cat /proc/mounts"):
-        isi("mounts",ssh_channel)
-        return
-    elif server_command.startswith("cat /etc/hosts"):
-        isi("etchost",ssh_channel)
-        return
-    elif server_command.startswith("cat /etc/issue"):
-        isi("etcissue",ssh_channel)
-        return
-    elif server_command.startswith("cat /etc/resolv.conf"):
-        isi("resolv", ssh_channel)
-    elif server_command.startswith("ls"):
-        isi("ls",ssh_channel)
-        return
-    elif server_command.startswith("ifconfig"):
-        isi("ifconfig",ssh_channel)
-        return
+    cursordb.execute("SELECT * FROM eksekusi WHERE input='" + server_command + "'" )
+    data = cursordb.fetchone()
+    if data is not None:
+        respon = "%s" % data[2]
     else:
         respon = server_command + ": command not found"
 
     logging.info(respon + "\n")
     ssh_channel.send(respon + "\r\n")
-
-def isi(nama_file, ssh_channel):
-    with open('fakefiles/{}'.format(nama_file)) as text:
-        ssh_channel.send("\r")
-        for line in enumerate(text):
-            logging.info(line[1])
-            ssh_channel.send(line[1]+ "\r")
-
 
 class Honeyta(paramiko.ServerInterface):
     def __init__(self):
@@ -151,11 +105,13 @@ def ssh_server():
 
         logging.info("\n Attacker IP : " + ip_att[0] + "\n" )
         logging.info("Attacker PORT : " + str(ip_att[1]) + "\n")
+
         server = smtplib.SMTP(configmail.mailFromServer)
         server.starttls()
         server.login(configmail.mailFromAdress, configmail.mailFromPassword)
         server.sendmail(configmail.mailFromAdress, configmail.mailToAdress, message)
         server.quit()
+
         print("[-] Attacker IP : " + ip_att[0])
         print("[-] Attacker PORT : " + str(ip_att[1]))
         print("[+] ========================================== [+]")
@@ -171,11 +127,8 @@ def ssh_server():
 
 
             ssh_channel = tp.accept()
-            if ssh_channel is None:
-                print("Tidak ada sambungan pada channel SSH")
 
-
-            serverpalsu.te.wait(10)
+            serverpalsu.te.wait(20)
             if not serverpalsu.te.is_set():
                 print("Tidak ada request pada server")
 
