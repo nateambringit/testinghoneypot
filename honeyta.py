@@ -134,7 +134,7 @@ def ssh_server():
 
 
             try:
-                ssh_channel.send("Ubuntu 16.04\r\n\r\n")
+                ssh_channel.send("Ubuntu 18.04\r\n\r\n")
                 r = True
                 while r:
                     ssh_channel.send("root@server:~# ")
