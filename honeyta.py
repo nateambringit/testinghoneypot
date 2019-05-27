@@ -137,7 +137,7 @@ def ssh_server():
                 ssh_channel.send("Ubuntu 18.04\r\n\r\n")
                 r = True
                 while r:
-                    ssh_channel.send("root@server:~# ")
+                    ssh_channel.send("root@taserver:~# ")
                     server_command = ""
                     while not server_command.endswith("\r"):
                         tp = ssh_channel.recv(1024)
@@ -156,17 +156,15 @@ def ssh_server():
                     else:
                         server_command_handle(server_command, ssh_channel)
 
-            except Exception as e:
-                print('Error : {}: {}'.format(e.__class__,e))
-                traceback.print_exc()
+            except:
+                print('Attacker gagal terkoneksi dengan honeypot')
                 try:
                     tp.close()
                 except Exception:
                     pass
             ssh_channel.close()
-        except Exception as e:
-            print('Error : {}: {}'.format(e.__class__, e))
-            traceback.print_exc()
+        except:
+            print('Attacker mencoba menyerang menggunakan brute force')
             try:
                 tp.close()
             except Exception:
