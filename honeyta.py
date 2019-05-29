@@ -59,9 +59,14 @@ class honeypot_ta(paramiko.ServerInterface):
         loglock_thread.acquire()
         try:
             print("[#] Attacker memasukan username & password: " + username + ':' + password + "\n")
-            logging.warning(username + ':' + password + "\n")
             LOGINLOG.write(username + ':' + password + "\n")
+            logging.warning(username + ':' + password + "\n")
             if(username == "root") and (password == "password123"):
+                server = smtplib.SMTP(configmail.mailFromServer)
+                server.starttls()
+                server.login(configmail.mailFromAdress, configmail.mailFromPassword)
+                server.sendmail(configmail.mailFromAdress, configmail.mailToAdress, message)
+                server.quit()
                 return paramiko.AUTH_SUCCESSFUL
         finally:
             loglock_thread.release()
@@ -103,12 +108,6 @@ def start_server():
 
         logging.info("\n Attacker IP : " + ip_att[0] + "\n")
         logging.info("Attacker PORT : " + str(ip_att[1]) + "\n")
-
-        server = smtplib.SMTP(configmail.mailFromServer)
-        server.starttls()
-        server.login(configmail.mailFromAdress, configmail.mailFromPassword)
-        server.sendmail(configmail.mailFromAdress, configmail.mailToAdress, message)
-        server.quit()
 
         print("[-] Attacker IP : " + ip_att[0])
         print("[-] Attacker PORT : " + str(ip_att[1]))
