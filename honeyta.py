@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.DEBUG,
                             filename='log/honeyta.log',
                             filemode='a')
 
-LOGINLOG = open("log/login.log","a")
+LOGINLOG = open('log/login.log','a')
 
 SSH_KEY = paramiko.RSAKey(filename='sshkey/honeyta.key')
 PORT = 22
@@ -168,10 +168,3 @@ def start_server():
 
 if __name__ == "__main__":
     start_server()
-
-
-
-
-
-
-
